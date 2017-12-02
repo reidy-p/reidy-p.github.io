@@ -20,14 +20,15 @@ layout: default
     <hr/>
            
     {{ content }}
-  {% if site.owner.disqus-shortname and page.comments == true %}
-    {% include _disqus_comments.html %}
+ 
+  {% if page.comments %}
+    {% include comments2.html %}
   {% endif %}
   </article>
 </div>
 
 
-{% include _scripts.html %}	        
+<!-- {% include _scripts.html %}	         -->
 
 </body>
 </html>
