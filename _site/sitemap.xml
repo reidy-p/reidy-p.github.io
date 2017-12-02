@@ -10,4 +10,7 @@
 <url>
 <loc>http://localhost:4000/posts/</loc>
 </url>
+<url>
+<loc>http://localhost:4000/software/</loc>
+</url>
 </urlset>

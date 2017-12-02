@@ -30,9 +30,6 @@
         <a href="{{ post.url | absolute_url }}" rel="permalink">{{ title }}</a>
       {% endif %}
     </h2>
-    <!-- {% if post.read_time %}
-      <p class="page__meta"><i class="fa fa-clock-o" aria-hidden="true"></i> {% include read-time.html %}</p>
-    {% endif %} -->
     {% if post.description %}<p class="archive__item-excerpt" itemprop="description">{{ post.description | markdownify | strip_html | truncate: 160 }}</p>{% endif %}
   </article>
 </div>
