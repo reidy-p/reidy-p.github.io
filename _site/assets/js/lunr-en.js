@@ -13,7 +13,7 @@ var idx = lunr(function () {
     idx.add({
       title: "Test Post",
       excerpt: "This is a test post.\n",
-      categories: ["r"],
+      categories: [],
       tags: ["r","career","statistics","education"],
       id: 0
     });
@@ -31,7 +31,7 @@ var store = [
       
       {
         "title": "Test Post",
-        "url": "http://localhost:4000/r/test-post/",
+        "url": "http://localhost:4000/test-post/",
         "excerpt": "This is a test post.\n",
         "teaser":
           
