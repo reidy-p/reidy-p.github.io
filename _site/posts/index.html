@@ -163,9 +163,15 @@
   </div>
 </div>
 
-    
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-110480715-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
 
-
+  gtag('config', 'UA-110480715-1');
+</script>
 
 <div id="main" role="main">
   
@@ -262,14 +268,28 @@
   
   </div>
  
-   
   <div class="archive">
-    
-      <h1 class="page__title">All Posts</h1>
-    
-    
-
-  </div>
+  
+    <h1 class="page__title">All Posts</h1>
+  
+  
+    <!-- <span class="post-meta">Nov 14, 2017</span> -->
+    <h2 class="archive__item-title" itemprop="headline">
+      <a class="post-link" href="/test-post1/">Test Post 1</a>
+    </h2>
+    <font size="2"><i><time datetime="2017-11-14T16:45:00+00:00">November 14, 2017</time> </i></font>
+    <p class="archive__item-excerpt" itemprop="description">Description of test post
+</p>
+  
+    <!-- <span class="post-meta">Jan 1, 2017</span> -->
+    <h2 class="archive__item-title" itemprop="headline">
+      <a class="post-link" href="/test-post2/">Test Post 2</a>
+    </h2>
+    <font size="2"><i><time datetime="2017-01-01T16:45:00+00:00">January 01, 2017</time> </i></font>
+    <p class="archive__item-excerpt" itemprop="description">Description of test post
+</p>
+  
+</div>
 </div>
 
     <div class="page__footer">

@@ -11,11 +11,20 @@ var idx = lunr(function () {
   
   
     idx.add({
-      title: "Test Post",
+      title: "Test Post 2",
       excerpt: "This is a test post.\n",
       categories: [],
       tags: ["r","career","statistics","education"],
       id: 0
+    });
+    
+  
+    idx.add({
+      title: "Test Post 1",
+      excerpt: "This is a test post.\n",
+      categories: [],
+      tags: ["r","career","statistics","education"],
+      id: 1
     });
     
   
@@ -30,8 +39,19 @@ var store = [
     
       
       {
-        "title": "Test Post",
-        "url": "http://localhost:4000/test-post/",
+        "title": "Test Post 2",
+        "url": "http://localhost:4000/test-post2/",
+        "excerpt": "This is a test post.\n",
+        "teaser":
+          
+            null
+          
+      },
+    
+      
+      {
+        "title": "Test Post 1",
+        "url": "http://localhost:4000/test-post1/",
         "excerpt": "This is a test post.\n",
         "teaser":
           

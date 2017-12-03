@@ -2,25 +2,21 @@
 layout: default
 ---
 
-{% if page.header.overlay_color or page.header.overlay_image or page.header.image %}
-  {% include page__hero.html %}
-{% elsif page.header.video.id and page.header.video.provider %}
-  {% include page__hero_video.html %}
-{% endif %}
-
-{% if page.url != "/" and site.breadcrumbs %}
-  {% unless paginator %}
-    {% include breadcrumbs.html %}
-  {% endunless %}
-{% endif %}
+{% include _google-analytics.html %}
 
 <div id="main" role="main">
   {% include sidebar.html %} 
-   
   <div class="archive">
-    {% unless page.header.overlay_color or page.header.overlay_image %}
-      <h1 class="page__title">{{ page.title }}</h1>
-    {% endunless %}
-    {{ content }}
-  </div>
+  {% unless page.header.overlay_color or page.header.overlay_image %}
+    <h1 class="page__title">{{ page.title }}</h1>
+  {% endunless %}
+  {% for post in site.posts %}
+    <!-- <span class="post-meta">{{ post.date | date: "%b %-d, %Y" }}</span> -->
+    <h2 class="archive__item-title" itemprop="headline">
+      <a class="post-link" href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
+    </h2>
+    <font size="2"><i><time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %d, %Y" }}</time> </i></font>
+    {% if post.description %}<p class="archive__item-excerpt" itemprop="description">{{ post.description | markdownify | strip_html | truncate: 160 }}</p>{% endif %}
+  {% endfor %}
+</div>
 </div>
