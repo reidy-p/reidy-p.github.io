@@ -8,12 +8,9 @@ layout: default
 <!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
 
 <body class="post">
-
 {% include _google-analytics.html %}
 
 <div id="main" role="main">
-  {% include sidebar.html %}
-
   <article class="post">
     <h2><strong>{{ page.title }}</strong></h2>
     <p><font size="3"><i><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%B %d, %Y" }}</time> </i></font></p>
