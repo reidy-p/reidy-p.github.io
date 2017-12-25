@@ -28,15 +28,6 @@ var idx = lunr(function () {
     });
     
   
-    idx.add({
-      title: "",
-      excerpt: "There have been several claims that many of Donald Trump’s Twitter followers are fake. For example, the twitteraudit service calculates...",
-      categories: [],
-      tags: [],
-      id: 2
-    });
-    
-  
 
 
 console.log( jQuery.type(idx) );
@@ -62,17 +53,6 @@ var store = [
         "title": "Test Post 1",
         "url": "http://localhost:4000/test-post1/",
         "excerpt": "This is a test post.\n",
-        "teaser":
-          
-            null
-          
-      },
-    
-      
-      {
-        "title": "",
-        "url": "http://localhost:4000/trump-tweets-part1/",
-        "excerpt": "There have been several claims that many of Donald Trump’s Twitter followers are fake. For example, the twitteraudit service calculates...",
         "teaser":
           
             null
