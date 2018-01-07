@@ -10,33 +10,6 @@ var idx = lunr(function () {
 
   
   
-    idx.add({
-      title: "Test Post 1",
-      excerpt: "This is a test post.\n",
-      categories: [],
-      tags: ["r","career","statistics","education"],
-      id: 0
-    });
-    
-  
-    idx.add({
-      title: "Estimating Trump's Fake Twitter Followers: Part 1",
-      excerpt: "Donald Trump enjoys using his Twitter account to “go around” the “Fake News Media” and has amassed a large following...",
-      categories: [],
-      tags: [],
-      id: 1
-    });
-    
-  
-    idx.add({
-      title: "Estimating Trump's Fake Twitter Followers: Part 2",
-      excerpt: "In the previous post I collected some data on a sample of Donald Trump’s Twitter followers and also assembled a...",
-      categories: [],
-      tags: [],
-      id: 2
-    });
-    
-  
 
 
 console.log( jQuery.type(idx) );
@@ -45,39 +18,6 @@ var store = [
   
     
     
-    
-      
-      {
-        "title": "Test Post 1",
-        "url": "http://localhost:4000/test-post1/",
-        "excerpt": "This is a test post.\n",
-        "teaser":
-          
-            null
-          
-      },
-    
-      
-      {
-        "title": "Estimating Trump's Fake Twitter Followers: Part 1",
-        "url": "http://localhost:4000/trump_fakeaccounts_part1/",
-        "excerpt": "Donald Trump enjoys using his Twitter account to “go around” the “Fake News Media” and has amassed a large following...",
-        "teaser":
-          
-            null
-          
-      },
-    
-      
-      {
-        "title": "Estimating Trump's Fake Twitter Followers: Part 2",
-        "url": "http://localhost:4000/trump_fakeaccounts_part2/",
-        "excerpt": "In the previous post I collected some data on a sample of Donald Trump’s Twitter followers and also assembled a...",
-        "teaser":
-          
-            null
-          
-      }
     
   ]
 
