@@ -10,6 +10,24 @@ var idx = lunr(function () {
 
   
   
+    idx.add({
+      title: "Tuning Spark Executors Part 1",
+      excerpt: "I’ve used Apache Spark at work for a couple of months and have often found the settings that control the...",
+      categories: [],
+      tags: [],
+      id: 0
+    });
+    
+  
+    idx.add({
+      title: "Tuning Spark Executors Part 2",
+      excerpt: "In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered...",
+      categories: [],
+      tags: [],
+      id: 1
+    });
+    
+  
 
 
 console.log( jQuery.type(idx) );
@@ -18,6 +36,28 @@ var store = [
   
     
     
+    
+      
+      {
+        "title": "Tuning Spark Executors Part 1",
+        "url": "http://localhost:4000/spark-performance-tuing-part1/",
+        "excerpt": "I’ve used Apache Spark at work for a couple of months and have often found the settings that control the...",
+        "teaser":
+          
+            null
+          
+      },
+    
+      
+      {
+        "title": "Tuning Spark Executors Part 2",
+        "url": "http://localhost:4000/spark-performance-tuning-part2/",
+        "excerpt": "In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered...",
+        "teaser":
+          
+            null
+          
+      }
     
   ]
 

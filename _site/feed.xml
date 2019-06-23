@@ -1,1 +1,312 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.6.2">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2018-01-07T18:40:10+00:00</updated><id>http://localhost:4000/</id><title type="html">Paul Reidy</title><subtitle>An amazing website.</subtitle><author><name>Paul Reidy</name><email>paul_reidy@outlook.com</email></author></feed>
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.8.5">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2019-06-23T19:00:11+01:00</updated><id>http://localhost:4000/</id><title type="html">Paul Reidy</title><subtitle>An amazing website.</subtitle><author><name>Paul Reidy</name><email>paul_reidy@outlook.com</email></author><entry><title type="html">Tuning Spark Executors Part 2</title><link href="http://localhost:4000/spark-performance-tuning-part2/" rel="alternate" type="text/html" title="Tuning Spark Executors Part 2" /><published>2019-05-08T00:00:00+01:00</published><updated>2019-05-08T00:00:00+01:00</updated><id>http://localhost:4000/spark-performance-tuning-part2</id><content type="html" xml:base="http://localhost:4000/spark-performance-tuning-part2/">&lt;p&gt;In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered the impact of each of these settings in isolation. In this post I will discuss different cases for balancing the trade-offs between these settings. The three scenarios I present are based on this &lt;a href=&quot;https://www.youtube.com/watch?v=vfiJQ7wg81Y&quot;&gt;interesting talk&lt;/a&gt; at Spark Summit 2016.&lt;/p&gt;
+
+&lt;h2 id=&quot;cluster-setup&quot;&gt;Cluster Setup&lt;/h2&gt;
+&lt;p&gt;In the Spark Summit 2016 talk linked to above the following cluster is used as a basis for all the examples:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/spark-cluster-example.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The cluster I’m using is the same &lt;a href=&quot;https://cloud.google.com/dataproc/&quot;&gt;Google Cloud Platform Dataproc&lt;/a&gt; as in the previous post which has three nodes with 8 cores and 32GB of memory each so I have tried to adjust the examples accordingly. I will present three scenarios based on the Spark Summit talk and compare them with a base case where I have not specified any executor settings.&lt;/p&gt;
+
+&lt;h2 id=&quot;base-case&quot;&gt;Base Case&lt;/h2&gt;
+&lt;p&gt;The &lt;code class=&quot;highlighter-rouge&quot;&gt;spark-bench&lt;/code&gt; config file for the base case is shown below. This will run the &lt;code class=&quot;highlighter-rouge&quot;&gt;SparkPiConcurrent&lt;/code&gt; workload discussed in the previous post 10 times with the default Spark settings for the Dataproc cluster.&lt;/p&gt;
+
+&lt;h4 id=&quot;spark-pi-baseconf&quot;&gt;&lt;em&gt;spark-pi-base.conf&lt;/em&gt;&lt;/h4&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    workload-suites = [
+      {
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 10
+        workloads = [
+          {
+            name = &quot;sparkpiconcurrent&quot;
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results of this are shown below:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/spark-pi-base-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;option-1-most-granular-tiny-executors&quot;&gt;Option 1: Most Granular (Tiny Executors)&lt;/h2&gt;
+&lt;p&gt;The first scenario presented in the Spark Summit talk is to request a large number of executors each with low memory each. Specifically, give each executor only 1 core which means that there will be 8 executors on each node and therefore each of these executors will get 32GB / 8 = 4GB of memory each. Each node has 8 executors (with 1 core each) so the whole cluster has 8 executors x 3 nodes = 24 executors in total. The &lt;code class=&quot;highlighter-rouge&quot;&gt;spark-bench&lt;/code&gt; config file is shown below:&lt;/p&gt;
+
+&lt;h4 id=&quot;spark-pi-tinyconf&quot;&gt;&lt;em&gt;spark-pi-tiny.conf&lt;/em&gt;&lt;/h4&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 24 
+      executor-cores = 1 
+      executor-memory = 4g
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 10
+        workloads = [
+          {
+            name = &quot;sparkpiconcurrent&quot;
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results are shown below:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/spark-pi-tiny-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;option-2-least-granular-fat-executors&quot;&gt;Option 2: Least Granular (Fat Executors)&lt;/h2&gt;
+&lt;p&gt;The problem with the first option is that it fails to make use of the benefits of running multiple tasks in the same executor. The second option goes to the opposite extreme. In this case we allocate 1 executor per node and give this executor as much memory as possible. This single executor also uses all 8 cores available on each node.&lt;/p&gt;
+
+&lt;h4 id=&quot;spark-pi-fatconf&quot;&gt;&lt;em&gt;spark-pi-fat.conf&lt;/em&gt;&lt;/h4&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 3 
+      executor-cores = 8 
+      executor-memory = 21g
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 10
+        workloads = [
+          {
+            name = &quot;sparkpiconcurrent&quot;
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results are shown below:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/spark-pi-fat-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;option-3-optimal-settings&quot;&gt;Option 3: Optimal Settings&lt;/h2&gt;
+&lt;p&gt;The third option tries to achieve a balance between the two extremes presented above. First, as noted in the Spark Summit talk, the &lt;code class=&quot;highlighter-rouge&quot;&gt;--executor-memory&lt;/code&gt; setting controls the heap size but we need to reserve some more memory for off-heap memory in YARN. Second, it is generally recommended to keep the number of cores per executor to 5 or fewer to improve HDFS I/O throughput. Finally, it is also recommended to leave 1 core per node for Hadoop/YARN daemon cores so we have 3 x 7 = 21 cores in total in our cluster. We only want a maximum of 5 cores per executor which gives us 21 cores / 5 cores per executor = 4 executors (rounded down). We can allocate 15GB of memory to each of these 4 executors to ensure we are well within the YARN memory limits.&lt;/p&gt;
+
+&lt;h4 id=&quot;spark-pi-optimalconf&quot;&gt;&lt;em&gt;spark-pi-optimal.conf&lt;/em&gt;&lt;/h4&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 4 
+      executor-cores = 5
+      executor-memory = 12g
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 10
+        workloads = [
+          {
+            name = &quot;sparkpiconcurrent&quot;
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results below show that this scenario offers an improvement over the previous two scenarios (lower avg. seconds) as we might expect. However, it’s quite interesting that it can’t improve over the default settings in the base case which suggests that the executor settings are already quite suitable for this particular job.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/spark-pi-optimal-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;In this post I have have discussed how to think about balancing the trade-offs between some of the settings for tuning spark executors. However, I have also shown that the default settings actually perform better in this particular case. It’s also important to remember that there are many other spark settings that may have a much bigger impact on your job and which I have not discussed here. These include topics such as analysing data skew, checking the size of shuffle partitions, minimising data shuffles, etc.&lt;/p&gt;</content><author><name>Paul Reidy</name><email>paul_reidy@outlook.com</email></author><summary type="html">In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered the impact of each of these settings in isolation. In this post I will discuss different cases for balancing the trade-offs between these settings. The three scenarios I present are based on this interesting talk at Spark Summit 2016.</summary></entry><entry><title type="html">Tuning Spark Executors Part 1</title><link href="http://localhost:4000/spark-performance-tuing-part1/" rel="alternate" type="text/html" title="Tuning Spark Executors Part 1" /><published>2019-05-07T00:00:00+01:00</published><updated>2019-05-07T00:00:00+01:00</updated><id>http://localhost:4000/spark-performance-tuing-part1</id><content type="html" xml:base="http://localhost:4000/spark-performance-tuing-part1/">&lt;p&gt;I’ve  used Apache Spark at work for a couple of months and have often found the settings that control the executors a bit confusing. In particular, I have never fully understood how to choose the number of executors, number of executor cores, and executor memory to improve performance. So I decided that I would run some experiments and document the results to try to understand the effects. In this post I will briefly discuss what each of three of the most important executor settings mean and show simple examples of how they affect performance.&lt;/p&gt;
+
+&lt;h2 id=&quot;cluster-setup&quot;&gt;Cluster Setup&lt;/h2&gt;
+&lt;p&gt;I decided to use the &lt;a href=&quot;https://cloud.google.com/dataproc/&quot;&gt;Google Cloud Platform Dataproc&lt;/a&gt; service to launch a cluster to run the experiments on. I chose to use a three node cluster with 8 cores and 32GB of memory each. Assuming that you have setup the Google Cloud SDK correctly you can launch a similar cluster using the following command:&lt;/p&gt;
+&lt;div class=&quot;language-shell highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;gcloud beta dataproc clusters create test-cluster &lt;span class=&quot;nt&quot;&gt;--max-age&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;6h&quot;&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--worker-machine-type&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;custom-8-32768 &lt;span class=&quot;nt&quot;&gt;--num-preemptible-workers&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;1
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;spark-bench&quot;&gt;spark-bench&lt;/h2&gt;
+&lt;p&gt;I came across an interesting library called &lt;a href=&quot;https://github.com/CODAIT/spark-bench&quot;&gt;spark-bench&lt;/a&gt; for running different Spark benchmarks. This project allows users to test multiple spark settings easily by using a simple configuration file. One of the spark jobs (called workloads) that &lt;code class=&quot;highlighter-rouge&quot;&gt;spark-bench&lt;/code&gt; offers as an example is SparkPi which estimates Pi in a distributed manner. I decided to use this workload to run my initial estimates.&lt;/p&gt;
+
+&lt;h2 id=&quot;num-executors&quot;&gt;num-executors&lt;/h2&gt;
+&lt;p&gt;In Spark executors are the processes that actually run computations and store data. When trying to improve performance in Spark many newcomers, myself included, try increasing the number of executors. We can see the effect of increasing the number of executors from 1 to 5 using the spark-bench config file below:&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = [1, 2, 3, 4, 5]
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        descr = &quot;One run of SparkPi and that's it!&quot;
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 5
+        workloads = [
+          {
+            name = &quot;sparkpi&quot;
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;This config files means that the SparkPi workload will be run 5 times separately with the &lt;code class=&quot;highlighter-rouge&quot;&gt;num-executors&lt;/code&gt; setting in the &lt;code class=&quot;highlighter-rouge&quot;&gt;spark-submit&lt;/code&gt; config ranging from 1 up to 5. The results are shown in the table below:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/num-executors-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;As show in the avg. seconds column, the workload generally takes less time as we increase the number of executors, although there is little different after we reach three executors. However, the introduction of dynamic allocation from Spark 1.2 onwards has made choosing the number of executors less important. This setting, which can be turned on or off from the spark-settings file, allows the Spark application to automatically scale the number of executors up and down based on the amount of work. In practice, executors are requested when there are pending tasks and executors are removed when idle for a certain period. To show the impact of dynamic allocation in practice I ran similar the same job as above but with the number of executors set to 2 and dynamic allocation turned on. If we compare the case where we have two executors without dynamic allocation above to the results here we can see that turning this setting on improved performance in this case:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/dynamic-allocation-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The Spark UI Event Timeline shows that our request for two executors is ignored and additional executors are added over time.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/dynamic-allocation-example.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Even though this setting is useful for automatically controlling the number of executors it does not affect the number of cores or the memory in the executors.&lt;/p&gt;
+
+&lt;h2 id=&quot;executor-cores&quot;&gt;executor-cores&lt;/h2&gt;
+&lt;p&gt;On each executor in Spark there are a certain number of cores. These are slots that we can insert tasks that we can run concurrently into. The &lt;code class=&quot;highlighter-rouge&quot;&gt;executor-cores&lt;/code&gt; flag in spark therefore controls how many concurrent tasks an executor can run. To test the impact of increasing the number of executor cores I added the settings below in my spark-bench config file. For simplicity I set the number of executors to 3 so that each node in the cluster has 1 executor and set dynamic allocation to false to keep the number of executors fixed:&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      executor-cores = [1, 2, 3, 4, 5]
+      num-executors = 3
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        descr = &quot;One run of SparkPi and that's it!&quot;
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 5
+        workloads = [
+          {
+            name = &quot;sparkpi&quot;
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;The results are shown below:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/num-executor-cores-results.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Surprisingly, the performance seemed to deteriorate when more cores were used for each executor. The reason for this seems to be that the random function in the standard SparkPi implementation can’t scale to multiple cores and so is not a good test of Spark performance as outlined in this &lt;a href=&quot;https://stackoverflow.com/questions/23268143/sparkpi-running-slow-with-more-than-1-slice&quot;&gt;StackOverflow question&lt;/a&gt;. To overcome this problem I decided to write a slightly modified SparkPi implementation called SparkPiConcurrent which uses a random function that doesn’t suffer from this issue:&lt;/p&gt;
+&lt;div class=&quot;language-scala highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;case&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;SparkPi&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;input&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Option&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                   &lt;span class=&quot;n&quot;&gt;output&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Option&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                   &lt;span class=&quot;n&quot;&gt;saveMode&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;SaveModes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;error&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                   &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Int&lt;/span&gt;
+                  &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;extends&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Workload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;c1&quot;&gt;// Taken directly from Spark Examples:
+&lt;/span&gt;  &lt;span class=&quot;c1&quot;&gt;// https://github.com/apache/spark/blob/master/examples/src/main/scala/org/apache/spark/examples/SparkPi.scala
+&lt;/span&gt;  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;calculatePi&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;spark&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;SparkSession&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Double&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;math&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;min&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;100000L&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Int&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;MaxValue&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;toInt&lt;/span&gt; &lt;span class=&quot;c1&quot;&gt;// avoid overflow
+&lt;/span&gt;    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;count&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;spark&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sparkContext&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;parallelize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;until&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;map&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&amp;gt;&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;random&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;random&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;
+    &lt;span class=&quot;o&quot;&gt;}.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;reduce&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;_&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;_&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;piApproximate&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;4.0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;count&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;piApproximate&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+ &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; 
+
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;case&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;SparkPiConcurrent&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;input&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Option&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                             &lt;span class=&quot;n&quot;&gt;output&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Option&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;None&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                             &lt;span class=&quot;n&quot;&gt;saveMode&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;SaveModes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;error&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt;
+                             &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Int&lt;/span&gt;
+                            &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;extends&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Workload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;calculatePi&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;spark&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;SparkSession&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;Double&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;math&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;min&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;100000L&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Int&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;MaxValue&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;toInt&lt;/span&gt; &lt;span class=&quot;c1&quot;&gt;// avoid overflow
+&lt;/span&gt;    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;count&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;spark&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sparkContext&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;parallelize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;until&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;slices&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;map&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&amp;gt;&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;ThreadLocalRandom&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;current&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;().&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nextDouble&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;ThreadLocalRandom&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;current&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;().&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nextDouble&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;
+    &lt;span class=&quot;o&quot;&gt;}.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;reduce&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;_&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;_&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;piApproximate&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;4.0&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;count&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;piApproximate&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+ &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;I ran the SparkPiConcurrent job using the same settings as above and this time the performance improved as more executor cores were used as we would expect:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/num-executor-cores-results-concurrent.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;For the remainder of this post I will use the SparkPiConcurrent job to illustrate the performance implications of the other settings.&lt;/p&gt;
+
+&lt;h2 id=&quot;executor-memory&quot;&gt;executor-memory&lt;/h2&gt;
+&lt;p&gt;The &lt;code class=&quot;highlighter-rouge&quot;&gt;executor-memory&lt;/code&gt; controls Spark’s caching behaviour and the size of objects when data is sent across the network. This setting is important because Spark jobs occasionally throw out of memory errors when performing memory-intensive operations. YARN can also kill an executor if it exceeds the YARN memory limits. However, running executors with too much memory can lead to delays with garbage collection. We have 32GB of memory available on each node in the cluster. In the config file below I keep the number of executors fixed at three and increase the amount of memory allocated to each as shown in the config file below:&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      executor-memory = [2g, 4g, 8g, 16g, 20g]
+      num-executors = 3
+    }
+    conf = {
+      &quot;spark.dynamicAllocation.enabled&quot; = &quot;false&quot;
+    }
+    workload-suites = [
+      {
+        descr = &quot;One run of SparkPi and that's it!&quot;
+        benchmark-output = &quot;hdfs:///tmp/benchmarkOutput/full.parquet&quot;
+        save-mode = &quot;append&quot;
+	    repeat = 5
+        workloads = [
+          {
+            name = &quot;sparkpiconcurrent&quot;
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;p&gt;I was unable to increase the amount of executor memory beyond 20GB without hitting YARN memory limits. Interestingly, increasing the executor memory seems to reduce performance, although the impact is quite small and probably not significant. This suggests that this particular job is not constrained by the amount of memory available on each of the executors at present.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/static/executor-memory-results-concurrent.jpg&quot; alt=&quot;jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+&lt;p&gt;In this post I’ve discussed some of the most important settings for tuning spark executors and how to use the spark-bench library to test this. However, I have focused on each setting in isolation without considering how to optimise overall performance. To properly tune Spark executors it’s important to set each of these settings at once and in the next post I will consider whether I can improve performance by doing this.&lt;/p&gt;</content><author><name>Paul Reidy</name><email>paul_reidy@outlook.com</email></author><summary type="html">I’ve used Apache Spark at work for a couple of months and have often found the settings that control the executors a bit confusing. In particular, I have never fully understood how to choose the number of executors, number of executor cores, and executor memory to improve performance. So I decided that I would run some experiments and document the results to try to understand the effects. In this post I will briefly discuss what each of three of the most important executor settings mean and show simple examples of how they affect performance.</summary></entry></feed>
