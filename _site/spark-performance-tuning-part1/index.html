@@ -1,0 +1,428 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.7.1 by Michael Rose
+  Copyright 2017 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE.txt
+-->
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin SEO -->
+
+
+
+
+
+
+
+
+
+<title>Tuning Spark Executors Part 1 - Paul Reidy</title>
+
+
+
+
+<meta name="description" content="I’ve used Apache Spark at work for a couple of months and have often found the settings that control the executors slightly confusing. In particular, I’ve found it difficult to see the impact of choosing the number of executors, number of executor cores, and executor memory and to understand how to manage the trade-offs between these settings. So I decided that I would run some experiments and document the results to improve my understanding. In this post I will briefly discuss what each of these executor settings control and show simple examples of how they affect performance.">
+
+
+
+
+<meta name="author" content="Paul Reidy">
+
+<meta property="og:locale" content="en">
+<meta property="og:site_name" content="Paul Reidy">
+<meta property="og:title" content="Tuning Spark Executors Part 1">
+
+
+  <link rel="canonical" href="http://localhost:4000/spark-performance-tuning-part1/">
+  <meta property="og:url" content="http://localhost:4000/spark-performance-tuning-part1/">
+
+
+
+  <meta property="og:description" content="I’ve used Apache Spark at work for a couple of months and have often found the settings that control the executors slightly confusing. In particular, I’ve found it difficult to see the impact of choosing the number of executors, number of executor cores, and executor memory and to understand how to manage the trade-offs between these settings. So I decided that I would run some experiments and document the results to improve my understanding. In this post I will briefly discuss what each of these executor settings control and show simple examples of how they affect performance.">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+
+
+
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2019-05-07T00:00:00+01:00">
+
+
+
+
+
+
+
+
+  <script type="application/ld+json">
+    {
+      "@context" : "http://schema.org",
+      "@type" : "Person",
+      "name" : "Paul Reidy",
+      "url" : "http://localhost:4000",
+      "sameAs" : null
+    }
+  </script>
+
+
+
+
+
+
+
+<!-- end SEO -->
+
+
+<link href="http://localhost:4000/feed.xml" type="application/atom+xml" rel="alternate" title="Paul Reidy Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="http://localhost:4000/assets/css/main.css">
+
+<!--[if lte IE 9]>
+  <style>
+    /* old IE unsupported flexbox fixes */
+    .greedy-nav .site-title {
+      padding-right: 3em;
+    }
+    .greedy-nav button {
+      position: absolute;
+      top: 0;
+      right: 0;
+      height: 100%;
+    }
+  </style>
+<![endif]-->
+
+
+    <!-- start custom head snippets -->
+
+<!-- insert favicons. use http://realfavicongenerator.net/ -->
+
+<!-- end custom head snippets -->
+  </head>
+
+  <body class="layout--post">
+
+    <!--[if lt IE 9]>
+<div class="notice--danger align-center" style="margin: 0;">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div>
+<![endif]-->
+
+    <div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        <a class="site-title" href="http://localhost:4000/">Paul Reidy</a>
+        <ul class="visible-links">
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/">About</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/posts/">Posts</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/software/">Software</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/favourites/">Favourites</a></li>
+          
+        </ul>
+        <button type="button">
+          <span class="visually-hidden">Toggle Menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+    <!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+
+<body class="post">
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-110480715-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-110480715-1');
+</script>
+
+<div id="main" role="main">
+  <article class="post">
+    <h2><strong>Tuning Spark Executors Part 1</strong></h2>
+    <p><font size="3"><i><time datetime="2019-05-07T00:00:00+01:00">May 07, 2019</time> </i></font></p>
+    <!--hr/-->
+           
+    <p>I’ve used Apache Spark at work for a couple of months and have often found the settings that control the executors slightly confusing. In particular, I’ve found it difficult to see the impact of choosing the number of executors, number of executor cores, and executor memory and to understand how to manage the trade-offs between these settings. So I decided that I would run some experiments and document the results to improve my understanding. In this post I will briefly discuss what each of these executor settings control and show simple examples of how they affect performance.</p>
+
+<h2 id="cluster-setup">Cluster Setup</h2>
+<p>I decided to use the <a href="https://cloud.google.com/dataproc/">Google Cloud Platform Dataproc</a> service to launch a cluster to run the experiments on because it offers a relatively quick and easy way to launch a cluster with Spark and Hadoop. I chose a three node cluster with 8 cores and 32GB of memory each. Assuming that you have setup the Google Cloud SDK correctly you can launch a similar cluster using the following command:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gcloud beta dataproc clusters create standard-cluster <span class="nt">--max-age</span><span class="o">=</span><span class="s2">"6h"</span> <span class="nt">--worker-machine-type</span><span class="o">=</span>custom-8-32768 <span class="nt">--num-preemptible-workers</span><span class="o">=</span>1
+</code></pre></div></div>
+
+<h2 id="spark-bench">spark-bench</h2>
+<p>During my research for this project I came across an interesting library called <a href="https://github.com/CODAIT/spark-bench">spark-bench</a> for running Spark benchmarks. This project allows users to test multiple Spark settings easily by using a simple configuration file. One of the Spark jobs (called workloads) that <code class="highlighter-rouge">spark-bench</code> offers as an example is SparkPi which estimates Pi in a distributed manner. I decided to use this workload to run my initial estimates.</p>
+
+<h2 id="num-executors">num-executors</h2>
+<p>Executors are one of the most important parts of the Spark architecture. These are the processes that actually run computations and store data. Many newcomers to Spark (including myself) try to improve Spark performance by simply increasing the number of executors and in some cases this improves performance by using more of the cluster resources. We can test the effect of increasing the number of executors from 1 to 5 using the spark-bench config file below:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = [1, 2, 3, 4, 5]
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        descr = "One run of SparkPi and that's it!"
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 5
+        workloads = [
+          {
+            name = "sparkpi"
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>This config files means that the SparkPi workload will be run 5 times separately with the <code class="highlighter-rouge">num-executors</code> setting in the <code class="highlighter-rouge">spark-submit</code> config ranging from 1 up to 5. For each <code class="highlighter-rouge">num-exeuctor</code> setting I ran the workload 5 times (controlled by the repeat parameter in the config file) and averaged the results. The averaged results are shown in the table below:</p>
+
+<p><img src="/static/num-executors-results.jpg" alt="jpg" /></p>
+
+<p>As show in the avg. seconds column, the workload generally takes less time as we increase the number of executors, although there is little difference after we reach three executors. However, the introduction of dynamic allocation from Spark 1.2 onwards has made choosing the number of executors less important. This setting, which can be controlled from the spark-settings file, allows the Spark application to automatically scale the number of executors up and down based on the amount of work. In practice, executors are requested when there are pending tasks and are removed when idle for a certain period. To show the impact of dynamic allocation in practice I ran the same job as above but with the number of executors set to 2 and dynamic allocation turned on. If we compare the case where we have two executors without dynamic allocation above to the results below we can see that turning this setting on improved performance in this case:</p>
+
+<p><img src="/static/dynamic-allocation-results.jpg" alt="jpg" /></p>
+
+<p>The Spark UI Event Timeline shows that our request for two executors is ignored and additional executors are added over time.</p>
+
+<p><img src="/static/dynamic-allocation-example.jpg" alt="jpg" /></p>
+
+<p>Even though this setting is useful for automatically controlling the number of executors it does not affect the number of cores or the memory in the executors so it is still important to consider these settings.</p>
+
+<h2 id="executor-cores">executor-cores</h2>
+<p>On each executor in Spark there are a certain number of cores. These are slots that we insert tasks that we can run concurrently into. The <code class="highlighter-rouge">executor-cores</code> flag in spark therefore controls how many concurrent tasks an executor can run. To test the impact of increasing the number of executor cores I added the settings below in my <code class="highlighter-rouge">spark-bench</code> config file. For simplicity I set the number of executors to 3 so that each node in the cluster has 1 executor and set dynamic allocation to false to keep the number of executors fixed:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      executor-cores = [1, 2, 3, 4, 5]
+      num-executors = 3
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        descr = "One run of SparkPi and that's it!"
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 5
+        workloads = [
+          {
+            name = "sparkpi"
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>The results are shown below:</p>
+
+<p><img src="/static/num-executor-cores-results.jpg" alt="jpg" /></p>
+
+<p>Surprisingly, the performance seemed to deteriorate when more cores were used for each executor. The reason for this seems to be that the random function in the standard SparkPi implementation can’t scale to multiple cores and so is not a good test of Spark performance as outlined in this <a href="https://stackoverflow.com/questions/23268143/sparkpi-running-slow-with-more-than-1-slice">StackOverflow question</a>. To overcome this problem I decided to write a slightly modified SparkPi implementation called SparkPiConcurrent which uses a random function that doesn’t suffer from this drawback:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">case</span> <span class="k">class</span> <span class="nc">SparkPi</span><span class="o">(</span><span class="n">input</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">None</span><span class="o">,</span>
+                   <span class="n">output</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">None</span><span class="o">,</span>
+                   <span class="n">saveMode</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="nc">SaveModes</span><span class="o">.</span><span class="n">error</span><span class="o">,</span>
+                   <span class="n">slices</span><span class="k">:</span> <span class="kt">Int</span>
+                  <span class="o">)</span> <span class="k">extends</span> <span class="nc">Workload</span> <span class="o">{</span>
+
+  <span class="c1">// Taken directly from Spark Examples:
+</span>  <span class="c1">// https://github.com/apache/spark/blob/master/examples/src/main/scala/org/apache/spark/examples/SparkPi.scala
+</span>  <span class="k">def</span> <span class="n">calculatePi</span><span class="o">(</span><span class="n">spark</span><span class="k">:</span> <span class="kt">SparkSession</span><span class="o">)</span><span class="k">:</span> <span class="kt">Double</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="n">n</span> <span class="k">=</span> <span class="n">math</span><span class="o">.</span><span class="n">min</span><span class="o">(</span><span class="mi">100000L</span> <span class="o">*</span> <span class="n">slices</span><span class="o">,</span> <span class="nc">Int</span><span class="o">.</span><span class="nc">MaxValue</span><span class="o">).</span><span class="n">toInt</span> <span class="c1">// avoid overflow
+</span>    <span class="k">val</span> <span class="n">count</span> <span class="k">=</span> <span class="n">spark</span><span class="o">.</span><span class="n">sparkContext</span><span class="o">.</span><span class="n">parallelize</span><span class="o">(</span><span class="mi">1</span> <span class="n">until</span> <span class="n">n</span><span class="o">,</span> <span class="n">slices</span><span class="o">).</span><span class="n">map</span> <span class="o">{</span> <span class="n">i</span> <span class="k">=&gt;</span>
+      <span class="k">val</span> <span class="n">x</span> <span class="k">=</span> <span class="n">random</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+      <span class="k">val</span> <span class="n">y</span> <span class="k">=</span> <span class="n">random</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+      <span class="k">if</span> <span class="o">((</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span><span class="o">)</span> <span class="o">+</span> <span class="o">(</span><span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="o">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="o">)</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">0</span>
+    <span class="o">}.</span><span class="n">reduce</span><span class="o">(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">)</span>
+    <span class="k">val</span> <span class="n">piApproximate</span> <span class="k">=</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">count</span> <span class="o">/</span> <span class="o">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="o">)</span>
+    <span class="n">piApproximate</span>
+  <span class="o">}</span>
+
+ <span class="o">...</span> 
+
+<span class="o">}</span>
+
+<span class="o">...</span>
+
+<span class="k">case</span> <span class="k">class</span> <span class="nc">SparkPiConcurrent</span><span class="o">(</span><span class="n">input</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">None</span><span class="o">,</span>
+                             <span class="n">output</span><span class="k">:</span> <span class="kt">Option</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">None</span><span class="o">,</span>
+                             <span class="n">saveMode</span><span class="k">:</span> <span class="kt">String</span> <span class="o">=</span> <span class="nc">SaveModes</span><span class="o">.</span><span class="n">error</span><span class="o">,</span>
+                             <span class="n">slices</span><span class="k">:</span> <span class="kt">Int</span>
+                            <span class="o">)</span> <span class="k">extends</span> <span class="nc">Workload</span> <span class="o">{</span>
+
+  <span class="k">def</span> <span class="n">calculatePi</span><span class="o">(</span><span class="n">spark</span><span class="k">:</span> <span class="kt">SparkSession</span><span class="o">)</span><span class="k">:</span> <span class="kt">Double</span> <span class="o">=</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="n">n</span> <span class="k">=</span> <span class="n">math</span><span class="o">.</span><span class="n">min</span><span class="o">(</span><span class="mi">100000L</span> <span class="o">*</span> <span class="n">slices</span><span class="o">,</span> <span class="nc">Int</span><span class="o">.</span><span class="nc">MaxValue</span><span class="o">).</span><span class="n">toInt</span> <span class="c1">// avoid overflow
+</span>    <span class="k">val</span> <span class="n">count</span> <span class="k">=</span> <span class="n">spark</span><span class="o">.</span><span class="n">sparkContext</span><span class="o">.</span><span class="n">parallelize</span><span class="o">(</span><span class="mi">1</span> <span class="n">until</span> <span class="n">n</span><span class="o">,</span> <span class="n">slices</span><span class="o">).</span><span class="n">map</span> <span class="o">{</span> <span class="n">i</span> <span class="k">=&gt;</span>
+      <span class="k">val</span> <span class="n">x</span> <span class="k">=</span> <span class="nc">ThreadLocalRandom</span><span class="o">.</span><span class="n">current</span><span class="o">().</span><span class="n">nextDouble</span><span class="o">()</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+      <span class="k">val</span> <span class="n">y</span> <span class="k">=</span> <span class="nc">ThreadLocalRandom</span><span class="o">.</span><span class="n">current</span><span class="o">().</span><span class="n">nextDouble</span><span class="o">()</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+      <span class="k">if</span> <span class="o">((</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span><span class="o">)</span> <span class="o">+</span> <span class="o">(</span><span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="o">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="o">)</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">0</span>
+    <span class="o">}.</span><span class="n">reduce</span><span class="o">(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">)</span>
+    <span class="k">val</span> <span class="n">piApproximate</span> <span class="k">=</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">count</span> <span class="o">/</span> <span class="o">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="o">)</span>
+    <span class="n">piApproximate</span>
+  <span class="o">}</span>
+
+ <span class="o">...</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>I ran the SparkPiConcurrent job using the same settings as above and this time the performance improved as more executor cores were used as expected:</p>
+
+<p><img src="/static/num-executor-cores-results-concurrent.jpg" alt="jpg" /></p>
+
+<p>For the remainder of this post and in the next post I will use the SparkPiConcurrent job to illustrate the performance implications of the other settings.</p>
+
+<h2 id="executor-memory">executor-memory</h2>
+<p>The <code class="highlighter-rouge">executor-memory</code> controls Spark’s caching behaviour and the size of objects when data is sent across the network. This setting is important because Spark jobs often throw out of memory errors when performing intensive operations. YARN can also kill an executor if it exceeds the YARN memory limits. On the other hand, running executors with too much memory can lead to delays with garbage collection. We have 32GB of memory available on each node in the cluster. In the config file below I keep the number of executors fixed at 3 and increase the amount of memory allocated to each as shown in the config file below:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      executor-memory = [2g, 4g, 8g, 16g, 20g]
+      num-executors = 3
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        descr = "One run of SparkPi and that's it!"
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 5
+        workloads = [
+          {
+            name = "sparkpiconcurrent"
+            slices = 10000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>I was unable to increase the amount of executor memory much beyond 20GB without hitting YARN memory limits. Interestingly, increasing the executor memory seems to reduce performance, although the impact is quite small and probably not significant. This suggests that this particular job is not constrained by the amount of memory available on each of the executors:</p>
+
+<p><img src="/static/executor-memory-results-concurrent.jpg" alt="jpg" /></p>
+
+<h2 id="conclusion">Conclusion</h2>
+<p>In this post I’ve discussed some of the most important settings for tuning Spark executors and how to use the spark-bench library to test this. However, I have focused on each setting in isolation without considering how to optimise overall performance. To properly tune Spark executors it’s important to consider each of these settings together and in the next <a href="/spark-performance-tuning-part2">post</a> I will show examples of how to do this.</p>
+
+<p>All of the code to replicate the examples from these two blog posts are available on GitHub in my <a href="https://github.com/reidy-p/spark-bench">fork</a> of the <code class="highlighter-rouge">spark-bench</code> library. Please feel free to contact me if you have any problems with the code.</p>
+
+ 
+  </article>
+</div>
+
+
+<!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="http://localhost:4000/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="http://localhost:4000/assets/js/scripts.min.js"></script>
+
+	         -->
+
+</body>
+</html>
+
+
+    <div class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        <div class="page__footer-follow">
+  <ul class="social-icons">
+    
+      <li><strong>Follow:</strong></li>
+    
+    
+    
+    
+      <li><a href="https://github.com/reidy-p"><i class="fa fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    
+    
+    
+    <!-- <li><a href="http://localhost:4000/feed.xml"><i class="fa fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li> -->
+  </ul>
+</div>
+
+<div class="page__footer-copyright">&copy; 2019 Paul Reidy. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/minimal-mistakes-jekyll-theme/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="http://localhost:4000/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+  </body>
+</html>

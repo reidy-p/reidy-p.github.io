@@ -6,3 +6,5 @@ main:
     url: /posts/
   - title: "Software"
     url: /software/
+  - title: "Favourites"
+    url: /favourites/

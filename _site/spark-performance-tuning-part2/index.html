@@ -1,0 +1,402 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.7.1 by Michael Rose
+  Copyright 2017 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE.txt
+-->
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin SEO -->
+
+
+
+
+
+
+
+
+
+<title>Tuning Spark Executors Part 2 - Paul Reidy</title>
+
+
+
+
+<meta name="description" content="In the previous post I discussed three of the most important settings for tuning Spark executors and introduced the spark-bench library for performing Spark benchmarks. However, I only considered the impact of each of these settings in isolation. In this post I will consider how to balance the trade-offs between these settings using three examples. The three scenarios I present are based on this interesting talk at Spark Summit 2016.">
+
+
+
+
+<meta name="author" content="Paul Reidy">
+
+<meta property="og:locale" content="en">
+<meta property="og:site_name" content="Paul Reidy">
+<meta property="og:title" content="Tuning Spark Executors Part 2">
+
+
+  <link rel="canonical" href="http://localhost:4000/spark-performance-tuning-part2/">
+  <meta property="og:url" content="http://localhost:4000/spark-performance-tuning-part2/">
+
+
+
+  <meta property="og:description" content="In the previous post I discussed three of the most important settings for tuning Spark executors and introduced the spark-bench library for performing Spark benchmarks. However, I only considered the impact of each of these settings in isolation. In this post I will consider how to balance the trade-offs between these settings using three examples. The three scenarios I present are based on this interesting talk at Spark Summit 2016.">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+
+
+
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2019-05-08T00:00:00+01:00">
+
+
+
+
+
+
+
+
+  <script type="application/ld+json">
+    {
+      "@context" : "http://schema.org",
+      "@type" : "Person",
+      "name" : "Paul Reidy",
+      "url" : "http://localhost:4000",
+      "sameAs" : null
+    }
+  </script>
+
+
+
+
+
+
+
+<!-- end SEO -->
+
+
+<link href="http://localhost:4000/feed.xml" type="application/atom+xml" rel="alternate" title="Paul Reidy Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="http://localhost:4000/assets/css/main.css">
+
+<!--[if lte IE 9]>
+  <style>
+    /* old IE unsupported flexbox fixes */
+    .greedy-nav .site-title {
+      padding-right: 3em;
+    }
+    .greedy-nav button {
+      position: absolute;
+      top: 0;
+      right: 0;
+      height: 100%;
+    }
+  </style>
+<![endif]-->
+
+
+    <!-- start custom head snippets -->
+
+<!-- insert favicons. use http://realfavicongenerator.net/ -->
+
+<!-- end custom head snippets -->
+  </head>
+
+  <body class="layout--post">
+
+    <!--[if lt IE 9]>
+<div class="notice--danger align-center" style="margin: 0;">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div>
+<![endif]-->
+
+    <div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        <a class="site-title" href="http://localhost:4000/">Paul Reidy</a>
+        <ul class="visible-links">
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/">About</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/posts/">Posts</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/software/">Software</a></li>
+          
+            
+            <li class="masthead__menu-item"><a href="http://localhost:4000/favourites/">Favourites</a></li>
+          
+        </ul>
+        <button type="button">
+          <span class="visually-hidden">Toggle Menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+    <!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+
+<body class="post">
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-110480715-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-110480715-1');
+</script>
+
+<div id="main" role="main">
+  <article class="post">
+    <h2><strong>Tuning Spark Executors Part 2</strong></h2>
+    <p><font size="3"><i><time datetime="2019-05-08T00:00:00+01:00">May 08, 2019</time> </i></font></p>
+    <!--hr/-->
+           
+    <p>In the previous <a href="/spark-performance-tuning-part1">post</a> I discussed three of the most important settings for tuning Spark executors and introduced the <code class="highlighter-rouge">spark-bench</code> library for performing Spark benchmarks. However, I only considered the impact of each of these settings in isolation. In this post I will consider how to balance the trade-offs between these settings using three examples. The three scenarios I present are based on this <a href="https://www.youtube.com/watch?v=vfiJQ7wg81Y">interesting talk</a> at Spark Summit 2016.</p>
+
+<h2 id="cluster-setup">Cluster Setup</h2>
+<p>In the Spark Summit 2016 talk linked to above the following cluster is used as a basis for all the examples:</p>
+
+<p><img src="/static/spark-cluster-example.jpg" alt="jpg" /></p>
+
+<p>The cluster I’m using is the same <a href="https://cloud.google.com/dataproc/">Google Cloud Platform Dataproc</a> as in the previous post which has 3 nodes with 8 cores and 32GB of memory each so I have tried to adjust the examples accordingly. I will present three scenarios based on the Spark Summit talk and compare them with a base case which uses the default cluster settings.</p>
+
+<h2 id="base-case">Base Case</h2>
+<p>The <code class="highlighter-rouge">spark-bench</code> config file for the base case is shown below. This will repeat the <code class="highlighter-rouge">SparkPiConcurrent</code> workload discussed in the previous post 10 times with the default Spark settings for the Dataproc cluster.</p>
+<h4 id="spark-pi-baseconf"><em>spark-pi-base.conf</em></h4>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    workload-suites = [
+      {
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 10
+        workloads = [
+          {
+            name = "sparkpiconcurrent"
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>I take the average of the 10 runs and show the results below<sup id="fnref:1"><a href="#fn:1" class="footnote">1</a></sup>:</p>
+
+<p><img src="/static/spark-pi-base-results.jpg" alt="jpg" /></p>
+
+<h2 id="option-1-most-granular-tiny-executors">Option 1: Most Granular (Tiny Executors)</h2>
+<p>The first option presented in the Spark Summit talk is to request a large number of executors each with low memory. Specifically, give each executor only 1 core which means that there will be 8 executors on each node and therefore each of these executors will get 32GB / 8 = 4GB of memory each. Each node has 8 executors (with 1 core each) so the whole cluster has 8 executors x 3 nodes = 24 executors in total. The <code class="highlighter-rouge">spark-bench</code> config file is shown below:</p>
+
+<h4 id="spark-pi-tinyconf"><em>spark-pi-tiny.conf</em></h4>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 24 
+      executor-cores = 1 
+      executor-memory = 4g
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 10
+        workloads = [
+          {
+            name = "sparkpiconcurrent"
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>The results are shown below:</p>
+
+<p><img src="/static/spark-pi-tiny-results.jpg" alt="jpg" /></p>
+
+<p>Note that even though 24 executors were requested a smaller number were actually delivered. This may be due to YARN memory limits or requirements to reserve memory for OS/Hadoop daemons.</p>
+
+<h2 id="option-2-least-granular-fat-executors">Option 2: Least Granular (Fat Executors)</h2>
+<p>The problem with the first option is that it fails to make use of the benefits of running multiple tasks in the same executor. The second option goes to the opposite extreme. In this case we allocate 1 executor per node and give this executor as much memory as possible. I decided to give each executor 21GB of memory because I was unable to increase the amount of executor memory beyond this without hitting YARN memory limits. This single executor also uses all 8 cores available on each node.</p>
+
+<h4 id="spark-pi-fatconf"><em>spark-pi-fat.conf</em></h4>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 3 
+      executor-cores = 8 
+      executor-memory = 21g
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 10
+        workloads = [
+          {
+            name = "sparkpiconcurrent"
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>The results are shown below:</p>
+
+<p><img src="/static/spark-pi-fat-results.jpg" alt="jpg" /></p>
+
+<h2 id="option-3-optimal-settings">Option 3: Optimal Settings</h2>
+<p>The third option tries to achieve a balance between the two extremes presented above. First, as noted in the Spark Summit talk, the <code class="highlighter-rouge">--executor-memory</code> setting controls the heap size but we need to reserve some more memory for off-heap memory in YARN. Second, it is generally recommended to keep the number of cores per executor to 5 or fewer to improve HDFS I/O throughput. Finally, it is also recommended to leave 1 core per node for Hadoop/YARN daemon cores which leaves us with 3 x 7 = 21 cores in total in our cluster. We only want a maximum of 5 cores per executor which gives us 21 cores / 5 cores per executor = 4 executors (rounded down). We can allocate 15GB of memory to each of these 4 executors to ensure we are well within the YARN memory limits.</p>
+
+<h4 id="spark-pi-optimalconf"><em>spark-pi-optimal.conf</em></h4>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>spark-bench = {
+  spark-submit-config = [{
+    spark-args = {
+      num-executors = 4 
+      executor-cores = 5
+      executor-memory = 12g
+    }
+    conf = {
+      "spark.dynamicAllocation.enabled" = "false"
+    }
+    workload-suites = [
+      {
+        benchmark-output = "hdfs:///tmp/benchmarkOutput/full.parquet"
+        save-mode = "append"
+	    repeat = 10
+        workloads = [
+          {
+            name = "sparkpiconcurrent"
+            slices = 100000
+          }
+        ]
+      }
+    ]
+  }]
+}
+</code></pre></div></div>
+
+<p>The results below show that this scenario offers an improvement over the previous two scenarios (lower avg. seconds) as we might expect. However, it’s quite interesting that it doesnt’t beat the default settings in the base case which suggests that the cluster settings are already quite suitable for this particular job.</p>
+
+<p><img src="/static/spark-pi-optimal-results.jpg" alt="jpg" /></p>
+
+<h2 id="conclusion">Conclusion</h2>
+<p>In this post I have have discussed how to think about balancing the trade-offs between some of the settings for tuning spark executors. However, I have also shown that the default settings actually perform better in this particular job. This suggests that the default Spark settings are actually quite reasonable and offer a good starting point. It’s always important to remember, however, that there are many other spark settings that may have a much bigger impact on your job and which I haven’t discussed here. These include topics such as analysing data skew, checking the size of shuffle partitions, minimising data shuffles, etc.</p>
+
+<p>All of the code to replicate the examples from these two blog posts are available on GitHub in my <a href="https://github.com/reidy-p/spark-bench">fork</a> of the <code class="highlighter-rouge">spark-bench</code> library. Please feel free to contact me if you have any problems with the code.</p>
+
+<div class="footnotes">
+  <ol>
+    <li id="fn:1">
+      <p>Note that the results from this blog post are not directly comparable to those in the previous post because I’m using 100,000 slices in this post compared to only 10,000 in the previous post. The increase in slices effectively means that the estimate of Pi should be more precise so the examples in this post will take longer than in the previous post. <a href="#fnref:1" class="reversefootnote">&#8617;</a></p>
+    </li>
+  </ol>
+</div>
+
+ 
+  </article>
+</div>
+
+
+<!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="http://localhost:4000/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="http://localhost:4000/assets/js/scripts.min.js"></script>
+
+	         -->
+
+</body>
+</html>
+
+
+    <div class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        <div class="page__footer-follow">
+  <ul class="social-icons">
+    
+      <li><strong>Follow:</strong></li>
+    
+    
+    
+    
+      <li><a href="https://github.com/reidy-p"><i class="fa fa-fw fa-github" aria-hidden="true"></i> GitHub</a></li>
+    
+    
+    
+    <!-- <li><a href="http://localhost:4000/feed.xml"><i class="fa fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li> -->
+  </ul>
+</div>
+
+<div class="page__footer-copyright">&copy; 2019 Paul Reidy. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/minimal-mistakes-jekyll-theme/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="http://localhost:4000/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+  </body>
+</html>

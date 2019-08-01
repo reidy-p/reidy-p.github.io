@@ -21,7 +21,7 @@ var idx = lunr(function () {
   
     idx.add({
       title: "Tuning Spark Executors Part 2",
-      excerpt: "In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered...",
+      excerpt: "In the previous post I discussed three of the most important settings for tuning Spark executors and introduced the spark-bench...",
       categories: [],
       tags: [],
       id: 1
@@ -40,7 +40,7 @@ var store = [
       
       {
         "title": "Tuning Spark Executors Part 1",
-        "url": "http://localhost:4000/spark-performance-tuing-part1/",
+        "url": "http://localhost:4000/spark-performance-tuning-part1/",
         "excerpt": "I’ve used Apache Spark at work for a couple of months and have often found the settings that control the...",
         "teaser":
           
@@ -52,7 +52,7 @@ var store = [
       {
         "title": "Tuning Spark Executors Part 2",
         "url": "http://localhost:4000/spark-performance-tuning-part2/",
-        "excerpt": "In the previous post I discussed three of the most important settings for tuning spark executors. However, I only considered...",
+        "excerpt": "In the previous post I discussed three of the most important settings for tuning Spark executors and introduced the spark-bench...",
         "teaser":
           
             null
