@@ -4,7 +4,7 @@ main:
     url: /
   - title: "Posts"
     url: /posts/
-  - title: "Software"
-    url: /software/
+  - title: "Projects"
+    url: /projects/
   - title: "Favourites"
     url: /favourites/
